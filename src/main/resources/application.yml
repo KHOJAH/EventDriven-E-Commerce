@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: 8082
 
 spring:
   application:
@@ -36,25 +36,28 @@ spring:
       properties:
         bootstrap.servers: localhost:9092
 
-  # H2 Database Configuration (for Outbox pattern examples)
+  # SQL Server Database Configuration (for Outbox pattern and Saga examples)
   datasource:
-    url: jdbc:h2:mem:kafkadb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
-    driverClassName: org.h2.Driver
+    url: jdbc:sqlserver://localhost:1433;encrypt=true;trustServerCertificate=true;
+    driverClassName: com.microsoft.sqlserver.jdbc.SQLServerDriver
     username: sa
-    password: 
-    h2:
-      console:
-        enabled: true
-        path: /h2-console
-  
+    password: YourStrong@Passw0rd!
+    hikari:
+      initialization-fail-timeout: 60000
+
   jpa:
-    database-platform: org.hibernate.dialect.H2Dialect
+    database-platform: org.hibernate.dialect.SQLServerDialect
     hibernate:
       ddl-auto: create-drop
     show-sql: true
     properties:
       hibernate:
         format_sql: true
+        hibernate:
+          jdbc:
+            batch_size: 50
+          order_inserts: true
+          order_updates: true
 
 # Actuator Configuration for monitoring
 management:

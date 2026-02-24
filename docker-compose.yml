@@ -75,7 +75,7 @@ services:
     depends_on:
       - kafka
     ports:
-      - "8080:8080"
+      - "8090:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: local-cluster
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
@@ -86,7 +86,7 @@ services:
     networks:
       - kafka-network
     volumes:
-      - kafka-ui-config:/etc/kafkaui/dynamic_config.yaml
+      - kafka-ui-config:/etc/kafkaui
 
   # Kafka Connect (for data integration - optional advanced feature)
   kafka-connect:
@@ -115,6 +115,28 @@ services:
     networks:
       - kafka-network
 
+  # SQL Server - Database for persistence
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: mssql
+    ports:
+      - "1433:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "YourStrong@Passw0rd!"
+      MSSQL_PID: Developer
+      MSSQL_TCP_PORT: 1433
+    networks:
+      - kafka-network
+    volumes:
+      - mssql-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'YourStrong@Passw0rd!' -Q 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
 networks:
   kafka-network:
     driver: bridge
@@ -124,3 +146,4 @@ volumes:
   zookeeper-logs:
   kafka-data:
   kafka-ui-config:
+  mssql-data:

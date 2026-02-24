@@ -34,12 +34,10 @@ public class KafkaMasteryApplication {
         System.out.println("""
             
             ╔═══════════════════════════════════════════════════════════╗
-            ║     🚀 Kafka Mastery Project Started Successfully!        ║
+            ║               Project Started Successfully                ║
             ╠═══════════════════════════════════════════════════════════╣
-            ║  Kafka UI: http://localhost:8080                          ║
-            ║  H2 Console: http://localhost:8080/h2-console             ║
+            ║  Kafka UI: http://localhost:8090                          ║
             ║  Metrics: http://localhost:8080/actuator/prometheus       ║
-            ║                                                           ║
             ║  📚 Open README.md to start your learning journey!        ║
             ╚═══════════════════════════════════════════════════════════╝
             
