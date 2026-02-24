@@ -1,94 +1,99 @@
-version: '3.8'
+version: '3.8' # Specifies the Docker Compose file format version
 
 services:
-  # Zookeeper - Required for Kafka coordination
+  # Zookeeper - Required for Kafka coordination (manages cluster state and leader election)
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.5.0
-    container_name: zookeeper
+    image: confluentinc/cp-zookeeper:7.5.0 # Official Confluent image for Zookeeper
+    container_name: zookeeper # Explicit name for the container
     environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_CLIENT_PORT: 2181 # The port where clients (like Kafka) connect
+      ZOOKEEPER_TICK_TIME: 2000 # Basic time unit (in ms) used by Zookeeper for heartbeats
     ports:
-      - "2181:2181"
+      - "2181:2181" # Map host port 2181 to container port 2181
     networks:
-      - kafka-network
+      - kafka-network # Join the custom bridge network
     volumes:
-      - zookeeper-data:/var/lib/zookeeper/data
-      - zookeeper-logs:/var/lib/zookeeper/log
+      - zookeeper-data:/var/lib/zookeeper/data # Persist Zookeeper snapshots
+      - zookeeper-logs:/var/lib/zookeeper/log # Persist transaction logs
 
-  # Kafka Broker
+  # Kafka Broker - The core messaging engine
   kafka:
-    image: confluentinc/cp-kafka:7.5.0
+    image: confluentinc/cp-kafka:7.5.0 # Official Confluent image for Kafka
     container_name: kafka
     depends_on:
-      - zookeeper
+      - zookeeper # Ensure Zookeeper starts before Kafka
     ports:
-      - "9092:9092"
-      - "29092:29092"
-      - "9999:9999"
+      - "9092:9092" # External traffic (host machine)
+      - "29092:29092" # Internal traffic (other containers)
+      - "9999:9999" # JMX monitoring port
     environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_BROKER_ID: 1 # Unique ID for the broker in the cluster
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181 # Points Kafka to the Zookeeper service
+      # Map internal and external traffic to different listeners
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      # How clients find the broker (internal network vs localhost)
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      # Actual interfaces Kafka binds to
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_NUM_PARTITIONS: 3
-      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
-      # JMX Configuration for monitoring
-      KAFKA_JMX_PORT: 9999
-      KAFKA_JMX_HOSTNAME: localhost
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT # Use internal listener for broker communication
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1 # Set to 1 for single-node local dev
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1 # Minimum 'In-Sync Replicas' for transactions
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1 # Replication for transaction logs
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0 # Speed up group rebalancing on startup
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true" # Allow Spring Boot to create topics automatically
+      KAFKA_NUM_PARTITIONS: 3 # Default partition count for new topics
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1 # Default replication for new topics
+      KAFKA_JMX_PORT: 9999 # Port for Java Management Extensions (monitoring)
+      KAFKA_JMX_HOSTNAME: localhost # Hostname for JMX access
     networks:
       - kafka-network
     volumes:
-      - kafka-data:/var/lib/kafka/data
-    healthcheck:
+      - kafka-data:/var/lib/kafka/data # Persist Kafka topic data/logs
+    healthcheck: # Ensure Kafka is actually ready to receive messages
       test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
       interval: 10s
       timeout: 10s
       retries: 5
 
-  # Schema Registry (for Avro serialization - optional advanced feature)
+  # Schema Registry - Manages Avro/Protobuf schemas for message validation
+  # ensures that producers and consumers agree on the "shape" of the data.
   schema-registry:
     image: confluentinc/cp-schema-registry:7.5.0
     container_name: schema-registry
     depends_on:
       - kafka
     ports:
-      - "8081:8081"
+      - "8081:8081" # Default Schema Registry API port
     environment:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:29092
+      # Since this container is inside the Docker network, it talks to Kafka using the internal service name (kafka) and the internal port (29092).
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:29092 # Where schemas are stored
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
     networks:
       - kafka-network
 
-  # Kafka UI - Web interface to manage and monitor Kafka
+  # Kafka UI - Web GUI for inspecting topics, messages, and consumer groups
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
     depends_on:
       - kafka
     ports:
-      - "8090:8080"
+      - "8090:8080" # Access the UI at http://localhost:8090
     environment:
-      KAFKA_CLUSTERS_0_NAME: local-cluster
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
-      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
-      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
-      KAFKA_CLUSTERS_0_JMXPORT: 9999
-      DYNAMIC_CONFIG_ENABLED: "true"
+      KAFKA_CLUSTERS_0_NAME: local-cluster # Display name in UI
+      # IMPORTANT: These must match the environment variables in the Kafka broker container
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092 # Connect UI to Kafka
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181 # Connect UI to Zookeeper
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081 # View schemas in UI
+      KAFKA_CLUSTERS_0_JMXPORT: 9999 # Monitor broker metrics
+      DYNAMIC_CONFIG_ENABLED: "true" # Allow editing config via UI
     networks:
       - kafka-network
     volumes:
       - kafka-ui-config:/etc/kafkaui
 
-  # Kafka Connect (for data integration - optional advanced feature)
+  # Kafka Connect - Framework for connecting Kafka to external systems (DBs, S3, etc.)
   kafka-connect:
     image: confluentinc/cp-kafka-connect:7.5.0
     container_name: kafka-connect
@@ -96,51 +101,55 @@ services:
       - kafka
       - schema-registry
     ports:
-      - "8083:8083"
+      - "8083:8083" # REST API for managing connectors
     environment:
       CONNECT_BOOTSTRAP_SERVERS: kafka:29092
       CONNECT_REST_PORT: 8083
-      CONNECT_GROUP_ID: compose-connect-group
+      CONNECT_GROUP_ID: compose-connect-group # Unique ID for the Connect cluster
+      # Topics where Connect stores its internal configuration and status
       CONNECT_CONFIG_STORAGE_TOPIC: docker-connect-configs
       CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
       CONNECT_OFFSET_STORAGE_TOPIC: docker-connect-offsets
       CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
       CONNECT_STATUS_STORAGE_TOPIC: docker-connect-status
       CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      # Converters handle the translation between Kafka bytes and Connect data
       CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
       CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
       CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
-      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components
-      CONNECT_LOG4J_LOGGERS: org.apache.zookeeper=ERROR,org.I0Itec.zkclient=ERROR,org.reflections=ERROR
+      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components # Where to look for connectors
+      CONNECT_LOG4J_LOGGERS: org.apache.zookeeper=ERROR,org.I0Itec.zkclient=ERROR,org.reflections=ERROR # Log filtering
     networks:
       - kafka-network
 
-  # SQL Server - Database for persistence
+  # SQL Server - Relational database for your Spring Boot application persistence
   mssql:
-    image: mcr.microsoft.com/mssql/server:2022-latest
+    image: mcr.microsoft.com/mssql/server:2022-latest # Latest SQL Server Docker image
     container_name: mssql
     ports:
-      - "1433:1433"
+      - "1433:1433" # Standard SQL Server port
     environment:
-      ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "YourStrong@Passw0rd!"
-      MSSQL_PID: Developer
+      ACCEPT_EULA: "Y" # Required: Accept the End-User License Agreement
+      MSSQL_SA_PASSWORD: "YourStrong@Passw0rd!" # Password for the 'sa' user
+      MSSQL_PID: Developer # Use the free Developer edition
       MSSQL_TCP_PORT: 1433
     networks:
       - kafka-network
     volumes:
-      - mssql-data:/var/opt/mssql
-    healthcheck:
+      - mssql-data:/var/opt/mssql # Persist database files (MDF/LDF)
+    healthcheck: # Ensure SQL Server is ready for connections
       test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'YourStrong@Passw0rd!' -Q 'SELECT 1'"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
 
+# Define the shared bridge network for container-to-container communication
 networks:
   kafka-network:
     driver: bridge
 
+# Define named volumes for data persistence across container restarts
 volumes:
   zookeeper-data:
   zookeeper-logs:

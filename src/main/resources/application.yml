@@ -11,27 +11,39 @@ spring:
     
     # Producer Configuration
     producer:
+      # Serializers convert Java objects into bytes for the network
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      # JsonSerializer automatically inspects your object and converts it to a JSON byte array.
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-      acks: all
-      retries: 3
+      acks: all # Highest reliability: waits for all replicas to acknowledge the message
+      retries: 3 # Number of times to retry sending if a transient error occurs
       properties:
-        linger.ms: 5
-        compression.type: snappy
-        enable.idempotence: true
+        linger.ms: 5 # Waits 5ms to batch messages together for better throughput
+        compression.type: snappy # Compresses data to save bandwidth/storage
+        enable.idempotence: true # Prevents duplicate messages if a retry happens during an ACK failure
     
     # Consumer Configuration
     consumer:
-      group-id: kafka-mastery-group
-      auto-offset-reset: earliest
-      enable-auto-commit: false
+      group-id: kafka-mastery-group # Identifies the consumer group for offset management (Load balancing)
+      auto-offset-reset: earliest # If no offset exists, start reading from the beginning of the topic
+      enable-auto-commit: false # Manual offset committing (better for ensuring "at-least-once" delivery)
+      # JsonSerializer automatically inspects your object and converts it to a JSON byte array.
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      # JsonSerializer automatically inspects your object and converts it to a JSON byte array.
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
-        spring.json.trusted.packages: "*"
-        isolation.level: read_committed
+        spring.json.trusted.packages: "*" # Allows deserializing JSON into any Java class
+        isolation.level: read_committed # Only reads messages that have been successfully "committed" in a transaction
     
     # Admin Configuration
+    # Main Shipping Warehouse
+    #    running a Java process (the Broker) that acts like a highly organized post office. Its only job is to:
+    #
+    #     -Receive boxes (Messages) from Producers.
+    #
+    #     -File them away on a shelf (Disk/Log) in a specific order.
+    #
+    #     -Hand them out to Consumers when they ask for them.
     admin:
       properties:
         bootstrap.servers: localhost:9092
@@ -43,59 +55,59 @@ spring:
     username: sa
     password: YourStrong@Passw0rd!
     hikari:
-      initialization-fail-timeout: 60000
+      initialization-fail-timeout: 60000 # Time to wait for a DB connection before failing startup
 
   jpa:
     database-platform: org.hibernate.dialect.SQLServerDialect
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: create-drop # Drops and recreates or update the schema on every restart (Dev only!)
     show-sql: true
     properties:
       hibernate:
         format_sql: true
         hibernate:
           jdbc:
-            batch_size: 50
-          order_inserts: true
-          order_updates: true
+            batch_size: 50 # Performance: groups 50 inserts/updates into a single DB trip
+          order_inserts: true # Improves batching efficiency
+          order_updates: true # Improves batching efficiency
 
 # Actuator Configuration for monitoring
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus
+        include: health,info,metrics,prometheus # Exposes metrics for Prometheus/Grafana dashboards
   endpoint:
     health:
-      show-details: always
+      show-details: always # Shows detailed status of DB and Kafka connections in /actuator/health
   prometheus:
     metrics:
       export:
-        enabled: true
+        enabled: true # Enables Prometheus metrics endpoint (/actuator/prometheus)
 
 # Application-specific Kafka topics configuration
 kafka:
-  topics:
+  topics: # Organization of topic names by domain (Order, Payment, Inventory)
     order:
-      created: order-created
-      confirmed: order-confirmed
-      cancelled: order-cancelled
+      created: order-created # Event published when an order is created
+      confirmed: order-confirmed # Event published when an order is confirmed
+      cancelled: order-cancelled # Event published when an order is cancelled
     payment:
-      processed: payment-processed
-      failed: payment-failed
+      processed: payment-processed # Event published when a payment is processed
+      failed: payment-failed # Event published when a payment fails
     inventory:
-      reserved: inventory-reserved
-      released: inventory-released
+      reserved: inventory-reserved # Event published when inventory is reserved
+      released: inventory-released # Event published when inventory is released
     notification:
-      email: notification-email
-      sms: notification-sms
+      email: notification-email # Event published when a notification is sent
+      sms: notification-sms # Event published when a notification is sent
     retry:
-      max-attempts: 3
-      initial-delay-ms: 1000
-      backoff-multiplier: 2
-      max-delay-ms: 10000
+      max-attempts: 3 # Number of times to retry sending a message
+      initial-delay-ms: 1000 # Initial delay before retrying
+      backoff-multiplier: 2 # Exponential backoff: 1s, then 2s, then 4s...
+      max-delay-ms: 10000 # Maximum delay between retries
     dlt:
-      enabled: true
+      enabled: true # Dead Letter Topic: sends failed messages to a separate topic for manual review
 
 # Logging Configuration
 logging:
