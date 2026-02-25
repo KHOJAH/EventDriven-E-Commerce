@@ -14,7 +14,7 @@ docker-compose up -d
 mvn spring-boot:run
 ```
 
-**Access Kafka UI:** http://localhost:8080
+**Access Kafka UI:** http://localhost:8090
 
 ---
 
