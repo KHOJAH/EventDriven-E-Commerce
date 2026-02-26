@@ -22,14 +22,34 @@
 
 ---
 
+## Challenges Completed
+
+### Day 1-2: Basic Producer/Consumer
+- [x] Read: `docs/KAFKA_CONCEPTS.md` - Kafka Fundamentals section
+- [x] Complete: `Order.java` challenges (1.1-1.5)
+- [x] Complete: `Payment.java` challenges (1.6-1.8)
+- [x] Complete: `OrderProducer.java` challenges (1.25-1.31)
+- [x] Complete: `OrderConsumer.java` challenges (1.38-1.44)
+- [x] Complete: `OrderService.java` challenges (1.32-1.34)
+- [x] Complete: `OrderController.java` challenges (1.35-1.37)
+
+### Day 3-4: Model Classes & DTOs
+- [x] Complete: `Inventory.java` challenges (1.9-1.12)
+- [x] Complete: `Notification.java` challenges (1.13-1.16)
+- [x] Complete: DTO challenges (1.17-1.24)
+- [x] Complete: Service challenges (1.45-1.51)
+
+---
+
 ## Key Concepts Learned
 
-### 1. **Kafka Topics** - The Channels
+### 1. Kafka Topics - The Channels
 - Topics are like **channels** where messages are published
 - We created: `order-created`, `order-confirmed`, `order-cancelled`
 - Messages are **persisted** to disk (not deleted after consumption)
+- Topics are auto-created when first message is published
 
-### 2. **Producer Pattern** - Publishing Events
+### 2. Producer Pattern - Publishing Events
 ```java
 // Async sending with callback (recommended)
 kafkaTemplate.send(topic, key, message)
@@ -42,7 +62,7 @@ kafkaTemplate.send(topic, key, message)
     });
 ```
 
-### 3. **Consumer Pattern** - Listening to Events
+### 3. Consumer Pattern - Listening to Events
 ```java
 @KafkaListener(topics = "order-created", groupId = "order-created-group")
 public void processOrderCreated(@Payload Order order) {
@@ -50,7 +70,7 @@ public void processOrderCreated(@Payload Order order) {
 }
 ```
 
-### 4. **Consumer Groups** - Pub/Sub vs Load Balancing
+### 4. Consumer Groups - Pub/Sub vs Load Balancing
 | Same Group ID | Different Group ID |
 |---------------|-------------------|
 | Load balancing (competing consumers) | Pub/Sub (everyone gets the message) |
@@ -120,6 +140,92 @@ public void processOrderCancelled(@Payload Order order) {
 ```
 
 **Lesson:** Copy-paste bugs are real! Always review code logic, not just structure.
+
+---
+
+### BUG #3: Kafka Connection Timeout
+
+**The Problem:**
+Application couldn't connect to Kafka and requests were hanging.
+
+**What We Found:**
+```yaml
+# docker-compose.yml
+KAFKA_ADVERTISED_LISTENERS: PLAINTEXT_HOST://localhost:19092
+```
+
+But our application.yml had:
+```yaml
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092  // WRONG PORT!
+```
+
+**The Fix:**
+```yaml
+spring:
+  kafka:
+    bootstrap-servers: localhost:19092  // Correct port
+```
+
+**Lesson:** Docker ports and advertised listeners must match your client configuration.
+
+---
+
+### BUG #4: OrderResponse Returns Null
+
+**The Problem:**
+API returned HTTP 500 with empty response.
+
+**What We Found:**
+```java
+// OrderResponse.java
+public static OrderResponse fromOrder(Order order) {
+    // TODO: Implement the conversion
+    return null;  // Placeholder not replaced!
+}
+```
+
+**The Fix:**
+```java
+public static OrderResponse fromOrder(Order order) {
+    return OrderResponse.builder()
+            .orderId(order.getOrderId())
+            .customerId(order.getCustomerId())
+            .customerEmail(order.getCustomerEmail())
+            .totalAmount(order.getTotalAmount())
+            .status(order.getStatus().name())
+            .items(order.getItems())
+            .shippingAddress(order.getShippingAddress())
+            .createdAt(order.getCreatedAt().toString())
+            .build();
+}
+```
+
+**Lesson:** Always replace placeholder code before testing!
+
+---
+
+### BUG #5: GenericMessage Wrapper Issue
+
+**The Problem:**
+Producer was wrapping Order in GenericMessage which confused the JSON serializer.
+
+**What We Found:**
+```java
+// WRONG - Unnecessary wrapper
+MessageHeaders headers = new MessageHeaders(Map.of("correlationId", order.getCorrelationId()));
+GenericMessage<Order> orderMessage = new GenericMessage<>(order, headers);
+kafkaTemplate.send(topic, order.getOrderId(), orderMessage);  // Wrapper causes issues
+```
+
+**The Fix:**
+```java
+// CORRECT - Send order directly
+kafkaTemplate.send(topic, order.getOrderId(), order);
+```
+
+**Lesson:** KafkaTemplate handles serialization automatically. Don't wrap payloads unless needed.
 
 ---
 
@@ -255,11 +361,15 @@ public class GlobalExceptionHandler {
 | File | Changes | Key Learning |
 |------|---------|--------------|
 | `Order.java` | Challenges 1.1-1.5 | Entity design, factory methods |
-| `OrderProducer.java` | Challenges 1.25-1.31 | Async sending, callbacks |
+| `Payment.java` | Challenges 1.6-1.8 | Model patterns |
+| `Inventory.java` | Challenges 1.9-1.12 | Model patterns |
+| `Notification.java` | Challenges 1.13-1.16 | Model patterns |
+| `OrderProducer.java` | Challenges 1.25-1.31 + **Bug fixes** | Async sending, callbacks |
 | `OrderConsumer.java` | Challenges 1.38-1.44 + **Bug fixes** | Kafka listeners, consumer groups |
 | `OrderService.java` | Challenges 1.32-1.34 | Business logic, event publishing |
-| `OrderController.java` | Challenges 1.35-1.37 + Cleanup | REST API, validation, exception handling |
-| `GlobalExceptionHandler.java` | **New file** | Global exception handling with `@RestControllerAdvice` |
+| `OrderController.java` | Challenges 1.35-1.37 + Cleanup | REST API, validation |
+| `OrderResponse.java` | Challenges 1.17-1.24 + **Bug fix** | DTO pattern, factory methods |
+| `GlobalExceptionHandler.java` | **New file** | Global exception handling |
 
 ---
 
@@ -269,9 +379,12 @@ public class GlobalExceptionHandler {
 |---------|---------|----------|
 | Calling `confirmOrder()` in `processOrderConfirmed()` | Infinite loop | Don't re-publish in event handlers |
 | Using same `groupId` for different services | Only one service receives messages | Use different group IDs for pub/sub |
+| Wrong Kafka bootstrap port | Connection timeout | Match port to docker-compose advertised listener |
 | Synchronous `.get()` on producer | Blocked threads, slow performance | Use async callbacks |
 | Not handling exceptions in consumer | Lost messages, no visibility | Add proper error handling |
 | Copy-pasting consumer methods | Wrong service methods called | Review logic, not just structure |
+| Leaving placeholder `return null` | HTTP 500 errors | Always implement TODO methods |
+| Wrapping payload in GenericMessage | Serialization issues | Send objects directly to KafkaTemplate |
 
 ---
 
@@ -283,6 +396,8 @@ public class GlobalExceptionHandler {
 4. **Always send asynchronously** - Use callbacks, not blocking `.get()`
 5. **Be careful with event chains** - Service methods may publish events, causing loops
 6. **Global exception handlers** - Use `@RestControllerAdvice` for clean code
+7. **Check Docker port mappings** - Advertised listeners must match client config
+8. **Replace all TODO placeholders** - Before testing your application
 
 ---
 
@@ -306,4 +421,3 @@ Ready for **Module 2 - Advanced Producer Patterns**:
 
 **Happy Learning!**
 
-> "The best way to learn Kafka is to break it, fix it, and understand why it broke."
