@@ -4,10 +4,10 @@ server:
 spring:
   application:
     name: kafka-mastery-project
-  
+
   # Kafka Configuration
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: localhost:19092
     
     # Producer Configuration
     producer:
@@ -46,7 +46,7 @@ spring:
     #     -Hand them out to Consumers when they ask for them.
     admin:
       properties:
-        bootstrap.servers: localhost:9092
+        bootstrap.servers: localhost:19092
 
   # SQL Server Database Configuration (for Outbox pattern and Saga examples)
   datasource:
