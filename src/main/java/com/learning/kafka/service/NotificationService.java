@@ -8,14 +8,6 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.util.UUID;
 
-/**
- * Notification Service - Module 1: Kafka Fundamentals
- * <p>
- * Business logic for sending notifications.
- * This service simulates email/SMS sending.
- *
- * @author Kafka Mastery Project
- */
 @Slf4j
 @Service
 public class NotificationService {

@@ -7,12 +7,14 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class Inventory {
+    private String inventoryId;
     private String orderId;
     private String correlationId;
     private String sku;
@@ -38,6 +40,7 @@ public class Inventory {
         Instant now = Instant.now();
 
         return Inventory.builder()
+                .inventoryId(UUID.randomUUID().toString())
                 .orderId(orderId)
                 .correlationId(correlationId)
                 .sku(sku)

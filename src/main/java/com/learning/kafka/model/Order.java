@@ -59,8 +59,8 @@ public class Order {
                 .build();
     }
 
-    public Order confirm() {
-        return Order.builder()
+    public void confirm() {
+        Order.builder()
                 .orderId(this.orderId)
                 .customerId(this.customerId)
                 .customerEmail(this.customerEmail)
