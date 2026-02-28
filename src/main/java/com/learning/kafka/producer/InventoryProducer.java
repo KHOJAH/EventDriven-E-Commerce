@@ -20,17 +20,17 @@ public class InventoryProducer {
     private static final String INVENTORY_RELEASED_TOPIC = "inventory-released";
 
     public void sendInventoryReserved(Inventory inventory) {
-        log.info("Sending inventory reserved event: {}", inventory.getInventoryId());
+        log.info("Sending inventory reserved event: {}", inventory.getReservationId());
 
         kafkaTemplate.send(INVENTORY_RESERVED_TOPIC, inventory.getOrderId(), inventory)
-                .whenComplete(handleSendResult(inventory.getInventoryId(), inventory.getStatus().name()));
+                .whenComplete(handleSendResult(inventory.getReservationId(), inventory.getStatus().name()));
     }
 
     public void sendInventoryReleased(Inventory inventory) {
-        log.info("Sending inventory released event: {}", inventory.getInventoryId());
+        log.info("Sending inventory released event: {}", inventory.getReservationId());
 
         kafkaTemplate.send(INVENTORY_RELEASED_TOPIC, inventory.getOrderId(), inventory)
-                .whenComplete(handleSendResult(inventory.getInventoryId(), inventory.getStatus().name()));
+                .whenComplete(handleSendResult(inventory.getReservationId(), inventory.getStatus().name()));
     }
 
     private static BiConsumer<SendResult<String, Object>, Throwable> handleSendResult(String inventoryId, String status) {

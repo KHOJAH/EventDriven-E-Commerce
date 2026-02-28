@@ -20,16 +20,20 @@ public class OrderConsumer {
         log.info("Received order created event: {}", order.getOrderId());
         log.info("Customer: {}, Amount: {}", order.getCustomerId(), order.getTotalAmount());
 
-        Order confirmedOrder = orderService.confirmOrder(order);
+        if (order.getTotalAmount().doubleValue() < 50) {
+            orderService.cancelOrder(order);
+        } else {
+            orderService.confirmOrder(order);
+        }
 
-        log.info("Order processed successfully: {}", confirmedOrder.getOrderId());
+        log.info("Order processed successfully: {}", order.getOrderId());
     }
 
     @KafkaListener(topics = "order-confirmed", groupId = "order-notification-group", containerFactory = "kafkaListenerContainerFactory")
     public void processOrderConfirmed(@Payload Order order) {
         log.info("Received order confirmed event: {}", order.getOrderId());
         log.info("Customer: {}, Amount: {}", order.getCustomerId(), order.getTotalAmount());
-
+        // remember to do it
         log.info("Processing order confirmation notifications for: {}", order.getOrderId());
     }
 
@@ -37,9 +41,7 @@ public class OrderConsumer {
     public void processOrderCancelled(@Payload Order order) {
         log.info("Received order cancelled event: {}", order.getOrderId());
         log.info("Customer: {}, Amount: {}", order.getCustomerId(), order.getTotalAmount());
-
-        Order cancelledOrder = orderService.cancelOrder(order);
-
-        log.info("Order processed successfully: {}", cancelledOrder.getOrderId());
+        // remember to do it
+        log.info("Order processed successfully: {}", order.getOrderId());
     }
 }

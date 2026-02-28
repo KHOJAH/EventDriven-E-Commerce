@@ -16,7 +16,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class Inventory {
-    private String inventoryId;
+    private String reservationId;
     private String orderId;
     private String correlationId;
     private String sku;
@@ -44,7 +44,7 @@ public class Inventory {
         Instant now = Instant.now();
 
         return Inventory.builder()
-                .inventoryId(UUID.randomUUID().toString())
+                .reservationId(UUID.randomUUID().toString())
                 .orderId(orderId)
                 .correlationId(correlationId)
                 .sku(sku)
