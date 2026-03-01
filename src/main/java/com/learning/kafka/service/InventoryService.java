@@ -20,61 +20,82 @@ public class InventoryService {
     private final Random random = new Random();
     private final Set<String> processedReservations = ConcurrentHashMap.newKeySet();
 
-    public void reserveInventoryAndPublish(Inventory inventory) {
-        Inventory result = reserveInventory(inventory);
+    public Inventory reserveInventoryAndPublish(Order order) {
+        log.info("Reserving inventory for order: {}", order.getOrderId());
+
+        Inventory inventory = Inventory.create(
+                order.getOrderId(),
+                order.getCorrelationId(),
+                order.getItems(),
+                1,
+                "WAREHOUSE-001"
+        );
+
+        Inventory result = processReservation(inventory);
 
         if (result.getStatus() == Inventory.ReservationStatus.RESERVED) {
             log.info("Inventory reserved successfully: {}", result.getOrderId());
-            publishInventoryReserved(result);
-        } else {
+            inventoryEventPublisher.publishInventoryReserved(result);
+        } else if (result.getStatus() == Inventory.ReservationStatus.FAILED) {
             log.warn("Inventory reservation failed: {}", result.getOrderId());
-            publishInventoryReleased(result);
+            inventoryEventPublisher.publishInventoryReleased(result);
         }
+
+        return result;
     }
 
-    public void publishInventoryReserved(Inventory inventory) {
-        log.info("Publishing inventory reserved event: {}", inventory.getReservationId());
-        inventoryEventPublisher.publishInventoryReserved(inventory);
-    }
-
-    public void publishInventoryReleased(Inventory inventory) {
-        log.info("Publishing inventory released event: {}", inventory.getReservationId());
-        inventoryEventPublisher.publishInventoryReleased(inventory);
-    }
-
-    public Inventory reserveInventory(Inventory inventory) {
-        log.info("Reserving inventory for order: {}", inventory.getOrderId());
-
+    private Inventory processReservation(Inventory inventory) {
         if (processedReservations.contains(inventory.getReservationId())) {
             log.warn("Duplicate reservation request - ignoring: {}", inventory.getReservationId());
             throw new NonRetryableException("Duplicate reservation: " + inventory.getReservationId());
         }
 
-        Inventory result = Inventory.create(
-                inventory.getOrderId(),
-                inventory.getCorrelationId(),
-                inventory.getSku(),
-                inventory.getQuantity(),
-                inventory.getWarehouseId()
-        );
-
         if (random.nextInt(100) < 90) {
             processedReservations.add(inventory.getReservationId());
-            return result.reserve();
+            return inventory.reserve();
         } else {
             log.error("Out of stock for order: {}", inventory.getOrderId());
-            return result.fail("Insufficient stock");
+            return inventory.fail("Insufficient stock");
         }
     }
 
-    public Inventory releaseInventory(Order order) {
+    public Inventory releaseInventoryAndPublish(Order order) {
         log.info("Releasing inventory for order: {}", order.getOrderId());
+
         processedReservations.remove(order.getIdempotencyKey());
-        Inventory inventory = Inventory.create(order.getOrderId(),
+
+        Inventory inventory = Inventory.create(
+                order.getOrderId(),
                 order.getCorrelationId(),
                 order.getItems(),
                 1,
-                "WAREHOUSE-001");
+                "WAREHOUSE-001"
+        );
+
+        Inventory result = inventory.release();
+        log.info("Inventory released: {}", result.getReservationId());
+
+        inventoryEventPublisher.publishInventoryReleased(result);
+        return result;
+    }
+
+    public Inventory reserveInventory(Inventory inventory) {
+        log.info("Reserving inventory (no publish): {}", inventory.getOrderId());
+        return processReservation(inventory);
+    }
+
+    public Inventory releaseInventory(Order order) {
+        log.info("Releasing inventory (no publish): {}", order.getOrderId());
+
+        processedReservations.remove(order.getIdempotencyKey());
+
+        Inventory inventory = Inventory.create(
+                order.getOrderId(),
+                order.getCorrelationId(),
+                order.getItems(),
+                1,
+                "WAREHOUSE-001"
+        );
 
         return inventory.release();
     }

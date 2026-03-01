@@ -21,46 +21,49 @@ public class PaymentService {
     private final PaymentEventPublisher paymentEventPublisher;
     private final Random random = new Random();
 
-    public Payment processPaymentAndPublish(Order order) {
-        Payment payment = processPayment(order);
-
-        if (COMPLETED.equals(payment.getStatus()))
-            paymentEventPublisher.publishPaymentProcessed(payment);
-        else if (FAILED.equals(payment.getStatus()))
-            paymentEventPublisher.publishPaymentFailed(payment);
-
-        return payment;
-    }
-
     public Payment processPayment(Order order) {
         log.info("Processing payment for order: {}", order.getOrderId());
 
-        Payment payment = Payment.create(order.getOrderId(),
-                order.getCorrelationId(),
-                order.getTotalAmount(),
-                Payment.PaymentMethod.CREDIT_CARD);
-
-        int outcome = random.nextInt(100);
-
-        if (outcome < 70) {
-            log.info("Payment successful: {}", payment.getPaymentId());
-            return payment.complete();
-        } else if (outcome < 90) {
-            log.warn("Temporary payment failure - will retry: {}", payment.getPaymentId());
-            throw new RetryableException("Payment gateway temporarily unavailable");
-        } else {
-            log.error("Permanent payment failure: {}", payment.getPaymentId());
-            throw new NonRetryableException("Invalid payment method");
-        }
-    }
-
-    public Payment handlePaymentFailure(Order order, String reason) {
         Payment payment = Payment.create(
                 order.getOrderId(),
                 order.getCorrelationId(),
                 order.getTotalAmount(),
                 Payment.PaymentMethod.CREDIT_CARD
         );
-        return payment.fail(reason);
+
+        try {
+            Payment result = processPayment(payment);
+
+            if (COMPLETED.equals(result.getStatus())) {
+                log.info("Payment successful: {}", result.getPaymentId());
+                paymentEventPublisher.publishPaymentProcessed(result);
+            } else if (FAILED.equals(result.getStatus())) {
+                log.error("Payment failed: {}", result.getPaymentId());
+                paymentEventPublisher.publishPaymentFailed(result);
+            }
+
+            return result;
+
+        } catch (RetryableException e) {
+            log.warn("Temporary payment failure - will retry: {}", order.getOrderId());
+            throw e;
+        } catch (NonRetryableException e) {
+            log.error("Permanent payment failure: {}", order.getOrderId());
+            Payment failed = payment.fail(e.getMessage());
+            paymentEventPublisher.publishPaymentFailed(failed);
+            return failed;
+        }
+    }
+
+    private Payment processPayment(Payment payment) {
+        int outcome = random.nextInt(100);
+
+        if (outcome < 70) {
+            return payment.complete();
+        } else if (outcome < 90) {
+            throw new RetryableException("Payment gateway temporarily unavailable");
+        } else {
+            throw new NonRetryableException("Invalid payment method");
+        }
     }
 }

@@ -20,45 +20,41 @@ import java.util.concurrent.CompletableFuture;
 public class OrderProducer implements OrderEventPublisher {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
+
     private static final String ORDER_CREATED_TOPIC = "order-created";
     private static final String ORDER_CONFIRMED_TOPIC = "order-confirmed";
     private static final String ORDER_CANCELLED_TOPIC = "order-cancelled";
+    private static final String ORDER_FAILED_TOPIC = "order-failed";
     private static final String INVENTORY_RESERVATION_TOPIC = "inventory-reservation";
 
     @Override
     public void publishOrderCreated(Order order) {
-        sendOrderCreated(order);
+        log.info("Publishing order created event: {}", order.getOrderId());
+        sendMessage(ORDER_CREATED_TOPIC, order.getOrderId(), order, order.getCorrelationId());
     }
 
     @Override
     public void publishOrderConfirmed(Order order) {
-        sendOrderConfirmed(order);
+        log.info("Publishing order confirmed event: {}", order.getOrderId());
+        sendMessage(ORDER_CONFIRMED_TOPIC, order.getOrderId(), order, order.getCorrelationId());
     }
 
     @Override
     public void publishOrderCancelled(Order order) {
-        sendOrderCancelled(order);
+        log.info("Publishing order cancelled event: {}", order.getOrderId());
+        sendMessage(ORDER_CANCELLED_TOPIC, order.getOrderId(), order, order.getCorrelationId());
+    }
+
+    @Override
+    public void publishOrderFailed(Order order) {
+        log.info("Publishing order failed event: {}", order.getOrderId());
+        sendMessage(ORDER_FAILED_TOPIC, order.getOrderId(), order, order.getCorrelationId());
     }
 
     @Override
     public void publishInventoryReservationRequest(Order order) {
-        log.info("Sending inventory reservation request: {}", order.getOrderId());
+        log.info("Publishing inventory reservation request: {}", order.getOrderId());
         sendMessage(INVENTORY_RESERVATION_TOPIC, order.getOrderId(), order, order.getCorrelationId());
-    }
-
-    public void sendOrderCreated(Order order) {
-        log.info("Sending order created event: {}", order.getOrderId());
-        sendMessage(ORDER_CREATED_TOPIC, order.getOrderId(), order, order.getCorrelationId());
-    }
-
-    public void sendOrderConfirmed(Order order) {
-        log.info("Sending order confirmed event: {}", order.getOrderId());
-        sendMessage(ORDER_CONFIRMED_TOPIC, order.getOrderId(), order, order.getCorrelationId());
-    }
-
-    public void sendOrderCancelled(Order order) {
-        log.info("Sending order cancelled event: {}", order.getOrderId());
-        sendMessage(ORDER_CANCELLED_TOPIC, order.getOrderId(), order, order.getCorrelationId());
     }
 
     private void sendMessage(String topic, String key, Object payload, String correlationId) {

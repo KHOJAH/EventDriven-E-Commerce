@@ -1,6 +1,5 @@
 package com.learning.kafka.producer;
 
-import com.learning.kafka.model.Order;
 import com.learning.kafka.model.Payment;
 import com.learning.kafka.service.PaymentEventPublisher;
 import lombok.RequiredArgsConstructor;
@@ -15,59 +14,55 @@ import java.util.function.BiConsumer;
 @Component
 @RequiredArgsConstructor
 public class PaymentProducer implements PaymentEventPublisher {
+
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
     private static final String PAYMENT_PROCESSED_TOPIC = "payment-processed";
     private static final String PAYMENT_FAILED_TOPIC = "payment-failed";
-    private static final String ORDER_CONFIRMED_TOPIC = "order-confirmed";
 
-    public void sendPaymentProcessed(Payment payment) {
-        log.info("Sending payment processed event: {}", payment.getPaymentId());
+    @Override
+    public void publishPaymentProcessed(Payment payment) {
+        log.info("Publishing payment processed event: {}", payment.getPaymentId());
         sendMessage(PAYMENT_PROCESSED_TOPIC, payment.getOrderId(), payment, payment.getPaymentId());
     }
 
     @Override
-    public void publishPaymentProcessed(Payment payment) {
-        sendPaymentProcessed(payment);
-    }
-
-    public void sendPaymentFailed(Payment payment) {
-        log.info("Sending payment failed event: {}", payment.getPaymentId());
-        sendMessage(PAYMENT_FAILED_TOPIC, payment.getOrderId(), payment, payment.getPaymentId());
-    }
-
-    @Override
     public void publishPaymentFailed(Payment payment) {
-        sendPaymentFailed(payment);
-    }
-
-    public void sendPaymentProcessedTransactional(Payment payment, Order confirmedOrder) {
-        log.info("Sending payment and order in transaction: paymentId={}", payment.getPaymentId());
-
-        kafkaTemplate.executeInTransaction(operations -> {
-            operations.send(PAYMENT_PROCESSED_TOPIC, payment.getOrderId(), payment);
-            operations.send(ORDER_CONFIRMED_TOPIC, confirmedOrder.getOrderId(), confirmedOrder);
-            return null;
-        });
-
-        log.info("Transaction completed successfully for paymentId={}", payment.getPaymentId());
+        log.info("Publishing payment failed event: {}", payment.getPaymentId());
+        sendMessage(PAYMENT_FAILED_TOPIC, payment.getOrderId(), payment, payment.getPaymentId());
     }
 
     private void sendMessage(String topic, String key, Object payload, String referenceId) {
         kafkaTemplate.send(topic, key, payload)
-                .whenComplete(handleSendCompletion(referenceId));
+                .whenComplete(handleSendCompletion(referenceId, topic));
     }
 
-    private BiConsumer<SendResult<String, Object>, Throwable> handleSendCompletion(String referenceId) {
+    private BiConsumer<SendResult<String, Object>, Throwable> handleSendCompletion(String referenceId, String topic) {
         return (result, ex) -> {
             if (ex == null) {
-                log.info("Payment event sent successfully for reference [{}] - Partition: {}, Offset: {}",
-                        referenceId,
+                log.info("Payment event sent successfully - Topic: {}, Partition: {}, Offset: {}, PaymentId: {}",
+                        topic,
                         result.getRecordMetadata().partition(),
-                        result.getRecordMetadata().offset());
+                        result.getRecordMetadata().offset(),
+                        referenceId);
             } else {
-                log.error("Failed to send Payment event for reference [{}]: {}", referenceId, ex.getMessage(), ex);
+                log.error("Failed to send payment event: {}", ex.getMessage(), ex);
             }
         };
+    }
+
+    // ============================================================================
+    // Legacy methods for Saga Orchestrator compatibility (DO NOT REMOVE)
+    // These methods are used by the saga pattern implementation
+    // ============================================================================
+
+    public void sendPaymentProcessed(Payment payment) {
+        log.info("Sending payment processed event (legacy): {}", payment.getPaymentId());
+        sendMessage(PAYMENT_PROCESSED_TOPIC, payment.getOrderId(), payment, payment.getPaymentId());
+    }
+
+    public void sendPaymentFailed(Payment payment) {
+        log.info("Sending payment failed event (legacy): {}", payment.getPaymentId());
+        sendMessage(PAYMENT_FAILED_TOPIC, payment.getOrderId(), payment, payment.getPaymentId());
     }
 }

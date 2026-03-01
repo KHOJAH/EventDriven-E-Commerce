@@ -10,5 +10,7 @@ public interface OrderEventPublisher {
 
     void publishOrderCancelled(Order order);
 
+    void publishOrderFailed(Order order);
+
     void publishInventoryReservationRequest(Order order);
 }

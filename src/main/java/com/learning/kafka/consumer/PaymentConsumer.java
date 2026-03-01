@@ -1,6 +1,8 @@
 package com.learning.kafka.consumer;
 
+import com.learning.kafka.model.Order;
 import com.learning.kafka.model.Payment;
+import com.learning.kafka.service.OrderEventPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.DltHandler;
@@ -10,25 +12,77 @@ import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
+import static com.learning.kafka.model.Payment.PaymentStatus.COMPLETED;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class PaymentConsumer {
 
-    @KafkaListener(topics = "payment-processed", groupId = "payment-confirmation-group",
-            containerFactory = "kafkaListenerContainerFactory")
+    private final OrderEventPublisher orderEventPublisher;
+    private final Set<String> processedKeys = ConcurrentHashMap.newKeySet();
+
+    @KafkaListener(
+            topics = "payment-processed",
+            groupId = "payment-confirmation-group",
+            containerFactory = "kafkaListenerContainerFactory"
+    )
     public void listenPaymentProcessed(Payment payment, Acknowledgment ack) {
         log.info("Received payment processed event: {}", payment.getPaymentId());
-        log.info("Order ID: {}, Amount: {}", payment.getOrderId(), payment.getAmount());
+
+        if (isDuplicate(payment.getPaymentId())) {
+            log.warn("Duplicate message detected - skipping: {}", payment.getPaymentId());
+            ack.acknowledge();
+            return;
+        }
 
         try {
-            // Payment already processed and events published by service
-            // Consumer just acknowledges successful processing
+            if (COMPLETED.equals(payment.getStatus())) {
+                log.info("Payment completed successfully, triggering inventory reservation: {}", payment.getOrderId());
+
+                Order order = buildOrderFromPayment(payment);
+                orderEventPublisher.publishInventoryReservationRequest(order);
+            }
+
+            processedKeys.add(payment.getPaymentId());
             ack.acknowledge();
-            log.info("Payment confirmation processed successfully: {}", payment.getPaymentId());
+            log.info("Payment confirmation processed: {}", payment.getPaymentId());
 
         } catch (Exception e) {
             log.error("Payment confirmation processing failed: {}", e.getMessage(), e);
+            throw e;
+        }
+    }
+
+    @KafkaListener(
+            topics = "payment-failed",
+            groupId = "payment-failure-group",
+            containerFactory = "kafkaListenerContainerFactory"
+    )
+    public void listenPaymentFailed(Payment payment, Acknowledgment ack) {
+        log.info("Received payment failed event: {}", payment.getPaymentId());
+
+        if (isDuplicate(payment.getPaymentId())) {
+            log.warn("Duplicate message detected - skipping: {}", payment.getPaymentId());
+            ack.acknowledge();
+            return;
+        }
+
+        try {
+            log.info("Payment failed, failing order: {}", payment.getOrderId());
+
+            Order order = buildOrderFromPayment(payment);
+            orderEventPublisher.publishOrderFailed(order);
+
+            processedKeys.add(payment.getPaymentId());
+            ack.acknowledge();
+            log.info("Payment failure handled: {}", payment.getPaymentId());
+
+        } catch (Exception e) {
+            log.error("Payment failure handling failed: {}", e.getMessage(), e);
             throw e;
         }
     }
@@ -41,9 +95,17 @@ public class PaymentConsumer {
         log.error("Correlation ID: {}", payment.getCorrelationId());
         log.error("Amount: {}", payment.getAmount());
         log.error("Status: {}", payment.getStatus());
-
-        // In production: alert operations team, store for manual review
-        // The correlation ID helps trace the message across all services
     }
 
+    private Order buildOrderFromPayment(Payment payment) {
+        return Order.builder()
+                .orderId(payment.getOrderId())
+                .correlationId(payment.getCorrelationId())
+                .totalAmount(payment.getAmount())
+                .build();
+    }
+
+    private boolean isDuplicate(String key) {
+        return processedKeys.contains(key);
+    }
 }

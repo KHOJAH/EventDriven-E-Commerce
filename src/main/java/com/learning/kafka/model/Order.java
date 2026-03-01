@@ -63,6 +63,28 @@ public class Order {
                 .build();
     }
 
+    /**
+     * Transitions order to PROCESSING state after validation.
+     */
+    public Order transitionToProcessing() {
+        return Order.builder()
+                .orderId(this.orderId)
+                .customerId(this.customerId)
+                .customerEmail(this.customerEmail)
+                .totalAmount(this.totalAmount)
+                .items(this.items)
+                .shippingAddress(this.shippingAddress)
+                .status(OrderStatus.PROCESSING)
+                .createdAt(this.createdAt)
+                .updatedAt(Instant.now())
+                .correlationId(this.correlationId)
+                .idempotencyKey(this.idempotencyKey)
+                .build();
+    }
+
+    /**
+     * Confirms order after successful payment and inventory reservation.
+     */
     public Order confirm() {
         return Order.builder()
                 .orderId(this.orderId)
@@ -79,6 +101,9 @@ public class Order {
                 .build();
     }
 
+    /**
+     * Cancels the order.
+     */
     public Order cancel() {
         return Order.builder()
                 .orderId(this.orderId)
@@ -88,6 +113,25 @@ public class Order {
                 .items(this.items)
                 .shippingAddress(this.shippingAddress)
                 .status(OrderStatus.CANCELLED)
+                .createdAt(this.createdAt)
+                .updatedAt(Instant.now())
+                .correlationId(this.correlationId)
+                .idempotencyKey(this.idempotencyKey)
+                .build();
+    }
+
+    /**
+     * Fails the order due to an error (e.g., payment failure, insufficient stock).
+     */
+    public Order fail(String reason) {
+        return Order.builder()
+                .orderId(this.orderId)
+                .customerId(this.customerId)
+                .customerEmail(this.customerEmail)
+                .totalAmount(this.totalAmount)
+                .items(this.items)
+                .shippingAddress(this.shippingAddress)
+                .status(OrderStatus.FAILED)
                 .createdAt(this.createdAt)
                 .updatedAt(Instant.now())
                 .correlationId(this.correlationId)

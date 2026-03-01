@@ -20,42 +20,31 @@ public class NotificationProducer implements NotificationEventPublisher {
     private static final String NOTIFICATION_EMAIL_TOPIC = "notification-email";
     private static final String NOTIFICATION_SMS_TOPIC = "notification-sms";
 
-    public void sendEmailNotification(Notification notification) {
-        log.info("Sending email notification: {}", notification.getNotificationId());
-        sendMessage(NOTIFICATION_EMAIL_TOPIC, notification.getOrderId(), notification,
-            notification.getNotificationId(), notification.getType().name());
-    }
-
     @Override
     public void publishEmailNotification(Notification notification) {
-        sendEmailNotification(notification);
-    }
-
-    public void sendSmsNotification(Notification notification) {
-        log.info("Sending SMS notification: {}", notification.getNotificationId());
-        sendMessage(NOTIFICATION_SMS_TOPIC, notification.getOrderId(), notification,
-            notification.getNotificationId(), notification.getType().name());
+        log.info("Publishing email notification: {}", notification.getNotificationId());
+        sendMessage(NOTIFICATION_EMAIL_TOPIC, notification.getOrderId(), notification, notification.getNotificationId());
     }
 
     @Override
     public void publishSmsNotification(Notification notification) {
-        sendSmsNotification(notification);
+        log.info("Publishing SMS notification: {}", notification.getNotificationId());
+        sendMessage(NOTIFICATION_SMS_TOPIC, notification.getOrderId(), notification, notification.getNotificationId());
     }
 
-    private void sendMessage(String topic, String key, Object payload, String notificationId, String type) {
+    private void sendMessage(String topic, String key, Object payload, String notificationId) {
         kafkaTemplate.send(topic, key, payload)
-                .whenComplete(handleSendCompletion(notificationId, type, topic));
+                .whenComplete(handleSendCompletion(notificationId, topic));
     }
 
-    private BiConsumer<SendResult<String, Object>, Throwable> handleSendCompletion(String notificationId, String type, String topic) {
+    private BiConsumer<SendResult<String, Object>, Throwable> handleSendCompletion(String notificationId, String topic) {
         return (result, ex) -> {
             if (ex == null) {
-                log.info("Notification sent successfully - Topic: {}, Partition: {}, Offset: {}, NotificationId: {}, Type: {}",
+                log.info("Notification sent successfully - Topic: {}, Partition: {}, Offset: {}, NotificationId: {}",
                         topic,
                         result.getRecordMetadata().partition(),
                         result.getRecordMetadata().offset(),
-                        notificationId,
-                        type);
+                        notificationId);
             } else {
                 log.error("Failed to send notification: {}", ex.getMessage(), ex);
             }
