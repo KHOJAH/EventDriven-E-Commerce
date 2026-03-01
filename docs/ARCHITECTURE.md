@@ -1,6 +1,8 @@
 # 🏗️ Architecture Documentation
 
-System design and architecture for the Kafka Mastery Project.
+System design and architecture for the Kafka-based E-Commerce Order Processing System.
+
+**Last Updated:** March 2026
 
 ---
 
@@ -12,6 +14,7 @@ System design and architecture for the Kafka Mastery Project.
 4. [Service Architecture](#service-architecture)
 5. [Event Flow](#event-flow)
 6. [Deployment Architecture](#deployment-architecture)
+7. [Configuration](#configuration)
 
 ---
 
@@ -19,12 +22,25 @@ System design and architecture for the Kafka Mastery Project.
 
 ### E-Commerce Order Processing System
 
-This project implements an **event-driven e-commerce platform** using Apache Kafka and Spring Boot.
+This project implements an **event-driven e-commerce platform** using Apache Kafka and Spring Boot 3.2.
 
 **Core Business Process:**
 ```
 Customer places order → Payment processed → Inventory reserved → Notification sent → Order shipped
 ```
+
+### Technology Stack
+
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| Java | 21 | Programming language |
+| Spring Boot | 3.2.3 | Application framework |
+| Spring Kafka | 3.1.1 | Kafka integration |
+| Apache Kafka | 3.5 (Confluent 7.5.0) | Message broker |
+| SQL Server | 2022 | Database (Outbox pattern, Saga state) |
+| Docker Compose | - | Infrastructure orchestration |
+| Lombok | 1.18.30 | Code generation |
+| MapStruct | 1.5.5.Final | DTO mapping |
 
 ### Key Architectural Decisions
 
@@ -33,8 +49,9 @@ Customer places order → Payment processed → Inventory reserved → Notificat
 | **Event-Driven Architecture** | Loose coupling, scalability, resilience |
 | **Apache Kafka** | High throughput, durability, replayability |
 | **Microservices** | Independent deployment, technology diversity |
-| **Saga Pattern** | Distributed transactions without 2PC |
-| **Outbox Pattern** | Reliable event publishing |
+| **Saga Pattern** | Distributed transactions without 2PC (optional mode) |
+| **Outbox Pattern** | Reliable event publishing from database transactions |
+| **Dual Consumer Modes** | Learning flexibility: standard consumers vs saga orchestrator |
 
 ---
 
@@ -56,19 +73,32 @@ Customer places order → Payment processed → Inventory reserved → Notificat
 └───────────────────────┼──────────────────────────────────────────────┘
                         │
 ┌───────────────────────▼──────────────────────────────────────────────┐
-│                      API Gateway                                      │
-│                  (Spring Boot REST)                                   │
+│                  Spring Boot Application                              │
+│                   (Port: 8082)                                        │
 │                        │                                              │
+│  ┌─────────────────────▼─────────────────────┐                       │
+│  │         OrderController                    │                       │
+│  │         POST /api/orders                   │                       │
+│  └─────────────────────┬─────────────────────┘                       │
+│                        │                                              │
+│  ┌─────────────────────▼─────────────────────┐                       │
+│  │         OrderService                       │                       │
+│  │  - createOrder                             │                       │
+│  │  - processOrder                            │                       │
+│  │  - confirmOrder                            │                       │
+│  │  - failOrder                               │                       │
+│  └─────────────────────┬─────────────────────┘                       │
+│                        │                                              │
+│  ┌─────────────────────▼─────────────────────┐                       │
+│  │         OrderProducer                      │                       │
+│  │  - publishOrderCreated                     │                       │
+│  │  - publishOrderConfirmed                   │                       │
+│  │  - publishOrderCancelled                   │                       │
+│  │  - publishOrderFailed                      │                       │
+│  └─────────────────────┬─────────────────────┘                       │
 └────────────────────────┼──────────────────────────────────────────────┘
                          │
-┌────────────────────────▼──────────────────────────────────────────────┐
-│                     Order Service                                     │
-│  ┌─────────────────────────────────────────────────────────────┐    │
-│  │  OrderController → OrderService → OrderProducer             │    │
-│  └─────────────────────────────────────────────────────────────┘    │
-│                        │                                              │
-│                   Kafka: order-created                               │
-└────────────────────────┼──────────────────────────────────────────────┘
+                         │ Kafka (localhost:19092)
                          │
         ┌────────────────┼────────────────┐
         │                │                │
@@ -87,12 +117,40 @@ Customer places order → Payment processed → Inventory reserved → Notificat
         └────────────────┼─────────────────┘
                          │
               ┌──────────▼──────────┐
-              │  Saga Orchestrator  │
+              │  Optional: Saga     │
+              │  Orchestrator       │
               │                     │
+              │  (mode=saga only)   │
               │  Coordinates flow   │
               │  Handles failures   │
-              │  (Compensation)     │
+              │  Timeout monitoring │
               └─────────────────────┘
+```
+
+### Infrastructure Components
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                   Docker Compose Infrastructure                      │
+│                                                                      │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                │
+│  │   Kafka     │  │  Zookeeper  │  │SchemaRegistry│                │
+│  │  :19092     │  │  :2181      │  │   :8081     │                │
+│  │  :29092     │  │             │  │             │                │
+│  │  :9999 (JMX)│  │             │  │             │                │
+│  └─────────────┘  └─────────────┘  └─────────────┘                │
+│                                                                      │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                │
+│  │  Kafka UI   │  │Kafka Connect│  │   SQL Server│                │
+│  │  :8090      │  │   :8083     │  │   :1433     │                │
+│  └─────────────┘  └─────────────┘  └─────────────┘                │
+│                                                                      │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │           Spring Boot Application                            │   │
+│  │           (Your Code)                                        │   │
+│  │           :8082 (REST)                                       │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -124,66 +182,137 @@ Customer places order → Payment processed → Inventory reserved → Notificat
    │                │ consume          │                  │
    │                │<─────────────────│                  │
    │                │                  │                  │
+   │                │                  │                  │
+   │                │                  │ inventory-reservation
+   │                │                  │─────────────────────────>│
+   │                │                  │                  │
+   │                │                  │                  │ Reserve inventory
+   │                │                  │                  │
+   │                │                  │<─────────────────────────│
+   │                │                  │  inventory-reserved      │
+   │                │                  │                  │
+   │                │                  │                  │ notification-email
+   │                │                  │<─────────────────────────│
+   │                │                  │                  │
    │ 201 Created   │                  │                  │
    │<───────────────│                  │                  │
    │                │                  │                  │
 ```
 
-### Sequence Diagram: Successful Order
+### Sequence Diagram: Successful Order (Standard Mode)
 
-```
-Client      OrderService    Kafka       Payment     Inventory   Notification
-  │            │             │             │            │            │
-  │──POST─────>│             │             │            │            │
-  │            │             │             │            │            │
-  │            │order-created│             │            │            │
-  │            │────────────>│             │            │            │
-  │            │             │             │            │            │
-  │            │             │  consume    │            │            │
-  │            │             │────────────>│            │            │
-  │            │             │             │            │            │
-  │            │             │payment-proc │            │            │
-  │            │             │────────────>│            │            │
-  │            │             │             │            │            │
-  │            │             │ consume     │            │            │
-  │            │             │<────────────│            │            │
-  │            │             │             │            │            │
-  │            │             │payment-proc │            │            │
-  │            │             │────────────>│            │            │
-  │            │             │             │            │            │
-  │            │             │ consume     │            │            │
-  │            │             │─────────────────────────>│            │
-  │            │             │             │            │            │
-  │            │             │inventory-rsv│            │            │
-  │            │             │─────────────────────────>│            │
-  │            │             │             │            │            │
-  │            │             │ consume     │            │            │
-  │            │             │<─────────────────────────│            │
-  │            │             │             │            │            │
-  │            │             │inventory-rsv│            │            │
-  │            │             │─────────────────────────>│            │
-  │            │             │             │            │            │
-  │            │             │ consume     │            │            │
-  │            │             │─────────────────────────────────────>│
-  │            │             │             │            │            │
-  │            │             │notification │            │            │
-  │            │             │─────────────────────────────────────>│
-  │            │             │             │            │            │
-  │<───────────│             │             │            │            │
-  │ 201 Created│             │             │            │            │
-  │            │             │             │            │            │
+```mermaid
+sequenceDiagram
+    participant Client
+    participant OrderCtrl as OrderController
+    participant OrderSvc as OrderService
+    participant OrderProd as OrderProducer
+    participant OrderTopic as order-created
+    participant OrderCons as OrderConsumer
+    participant PaymentSvc as PaymentService
+    participant PaymentProd as PaymentProducer
+    participant PaymentTopic as payment-processed
+    participant PaymentCons as PaymentConsumer
+    participant OrderEventPub as OrderEventPublisher
+    participant InvReservation as inventory-reservation
+    participant InvCons as InventoryConsumer
+    participant InvSvc as InventoryService
+    participant InvProd as InventoryProducer
+    participant InvReserved as inventory-reserved
+    participant NotifSvc as NotificationService
+    participant NotifProd as NotificationProducer
+    participant NotifEmail as notification-email
+    participant NotifCons as NotificationConsumer
+
+    Client->>OrderCtrl: POST /api/orders
+    OrderCtrl->>OrderSvc: createOrder
+    OrderSvc->>OrderProd: publishOrderCreated
+    OrderProd->>OrderTopic: publish event
+
+    OrderTopic->>OrderCons: consume
+    OrderCons->>OrderSvc: processOrder
+    OrderCons->>PaymentSvc: processPayment
+    PaymentSvc->>PaymentProd: publishPaymentProcessed
+    PaymentProd->>PaymentTopic: publish event
+
+    PaymentTopic->>PaymentCons: consume
+    PaymentCons->>OrderEventPub: publishInventoryReservationRequest
+    OrderEventPub->>InvReservation: publish event
+
+    InvReservation->>InvCons: consume
+    InvCons->>InvSvc: reserveInventoryAndPublish
+    InvSvc->>InvProd: publishInventoryReserved
+    InvProd->>InvReserved: publish event
+
+    InvReserved->>InvCons: consume
+    InvCons->>OrderSvc: confirmOrder
+    OrderSvc->>OrderProd: publishOrderConfirmed
+    InvCons->>NotifSvc: sendOrderConfirmation
+    NotifSvc->>NotifProd: publishEmailNotification
+    NotifProd->>NotifEmail: publish event
+
+    NotifEmail->>NotifCons: consume
+    NotifCons->>NotifCons: Send email
+
+    Note over Client,NotifCons: ✅ Order Complete!
 ```
 
 ---
 
 ## Service Architecture
 
+### Package Structure
+
+```
+src/main/java/com/learning/kafka/
+├── config/              # Kafka configurations
+│   ├── KafkaProducerConfig.java
+│   ├── KafkaConsumerConfig.java
+│   ├── KafkaTopicConfig.java
+│   ├── KafkaErrorHandlingConfig.java
+│   ├── KafkaMonitoringConfig.java
+│   └── JacksonConfig.java
+├── controller/          # REST API endpoints
+│   └── OrderController.java
+├── consumer/            # Kafka consumers
+│   ├── OrderConsumer.java
+│   ├── PaymentConsumer.java
+│   ├── InventoryConsumer.java
+│   └── NotificationConsumer.java
+├── producer/            # Kafka producers
+│   ├── OrderProducer.java
+│   ├── PaymentProducer.java
+│   ├── InventoryProducer.java
+│   └── NotificationProducer.java
+├── service/             # Business logic
+│   ├── OrderService.java
+│   ├── PaymentService.java
+│   ├── InventoryService.java
+│   ├── NotificationService.java
+│   ├── OrderEventPublisher.java
+│   ├── PaymentEventPublisher.java
+│   ├── InventoryEventPublisher.java
+│   └── NotificationEventPublisher.java
+├── saga/                # Saga orchestrator (mode=saga)
+│   ├── OrderSagaOrchestrator.java
+│   ├── SagaState.java
+│   └── repository/SagaStateRepository.java
+├── outbox/              # Outbox pattern implementation
+├── model/               # Domain models
+│   ├── Order.java
+│   ├── Payment.java
+│   ├── Inventory.java
+│   └── Notification.java
+└── dto/                 # Data transfer objects
+    └── OrderRequest.java
+```
+
 ### Order Service
 
 **Responsibilities:**
-- Accept order requests via REST API
+- Accept order requests via REST API (`POST /api/orders`)
 - Validate order data
-- Publish order-created events
+- Publish order events (created, confirmed, cancelled, failed)
 - Track order status
 
 **Components:**
@@ -195,30 +324,22 @@ OrderService (Business Logic)
 OrderProducer (Kafka Producer)
 ```
 
-**Database Schema:**
-```sql
-CREATE TABLE orders (
-    order_id VARCHAR(36) PRIMARY KEY,
-    customer_id VARCHAR(36) NOT NULL,
-    customer_email VARCHAR(255) NOT NULL,
-    total_amount DECIMAL(10,2) NOT NULL,
-    status VARCHAR(50) NOT NULL,
-    items TEXT,
-    shipping_address TEXT,
-    created_at TIMESTAMP,
-    updated_at TIMESTAMP,
-    correlation_id VARCHAR(36),
-    idempotency_key VARCHAR(100)
-);
+**Order States:**
+```
+PENDING → PROCESSING → CONFIRMED
+              ↓
+           CANCELLED
+              ↓
+            FAILED
 ```
 
 ### Payment Service
 
 **Responsibilities:**
-- Process payments
+- Process payments for orders
 - Handle payment failures
-- Publish payment events
-- Support refunds (compensation)
+- Publish payment events (processed, failed)
+- Support refunds (compensation in saga mode)
 
 **Components:**
 ```
@@ -229,7 +350,7 @@ PaymentService (Business Logic)
 PaymentProducer (Kafka Producer)
 ```
 
-**State Machine:**
+**Payment States:**
 ```
 PENDING → PROCESSING → COMPLETED
                     ↓
@@ -251,6 +372,13 @@ InventoryConsumer (Kafka Consumer)
 InventoryService (Business Logic)
     ↓
 InventoryProducer (Kafka Producer)
+```
+
+**Inventory States:**
+```
+PENDING → RESERVED → CONFIRMED
+         ↓
+       RELEASED
 ```
 
 ### Notification Service
@@ -277,29 +405,27 @@ NotificationProducer (Kafka Producer)
 ### Topic Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Order Events                             │
-│  order-created → order-confirmed → order-cancelled          │
-└─────────────────────────────────────────────────────────────┘
-                          ↓
-┌─────────────────────────────────────────────────────────────┐
-│                    Payment Events                            │
-│  payment-process → payment-processed → payment-failed       │
-└─────────────────────────────────────────────────────────────┘
-                          ↓
-┌─────────────────────────────────────────────────────────────┐
-│                   Inventory Events                           │
-│  inventory-reservation → inventory-reserved → inventory-released
-└─────────────────────────────────────────────────────────────┘
-                          ↓
-┌─────────────────────────────────────────────────────────────┐
-│                  Notification Events                         │
-│  notification-email → notification-sent                     │
-│  notification-sms → notification-sent                       │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                        Kafka Topics                              │
+├─────────────────────────────────────────────────────────────────┤
+│ Order Events:                                                    │
+│   order-created → order-confirmed → order-cancelled → order-failed
+│                                                                  │
+│ Payment Events:                                                  │
+│   payment-processed → payment-failed                             │
+│                                                                  │
+│ Inventory Events:                                                │
+│   inventory-reservation → inventory-reserved → inventory-released
+│                                                                  │
+│ Notification Events:                                             │
+│   notification-email → notification-sms                          │
+│                                                                  │
+│ Dead Letter Topics:                                              │
+│   order-created-dlt, payment-processed-dlt                       │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### Event Schema
+### Event Schemas
 
 **Order Created Event:**
 ```json
@@ -317,155 +443,257 @@ NotificationProducer (Kafka Producer)
 }
 ```
 
+**Payment Processed Event:**
+```json
+{
+  "paymentId": "PAY-789012",
+  "orderId": "ORD-123456",
+  "amount": 99.99,
+  "status": "COMPLETED",
+  "paymentMethod": "CREDIT_CARD",
+  "correlationId": "CORR-ABC123",
+  "processedAt": "2025-02-25T10:30:05Z"
+}
+```
+
+**Inventory Reserved Event:**
+```json
+{
+  "reservationId": "RES-345678",
+  "orderId": "ORD-123456",
+  "items": [
+    {"sku": "SKU-001", "quantity": 2},
+    {"sku": "SKU-002", "quantity": 1}
+  ],
+  "status": "RESERVED",
+  "warehouseId": "WAREHOUSE-001",
+  "correlationId": "CORR-ABC123",
+  "reservedAt": "2025-02-25T10:30:10Z"
+}
+```
+
 ---
 
 ## Deployment Architecture
 
 ### Local Development (Docker Compose)
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                   Docker Host                                │
-│                                                              │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Kafka     │  │  Zookeeper  │  │SchemaRegistry│        │
-│  │  :9092      │  │  :2181      │  │   :8081     │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-│                                                              │
-│  ┌─────────────┐  ┌─────────────┐                          │
-│  │  Kafka UI   │  │Kafka Connect│                          │
-│  │  :8080      │  │   :8083     │                          │
-│  └─────────────┘  └─────────────┘                          │
-│                                                              │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │           Spring Boot Application                    │   │
-│  │           (Your Code)                                │   │
-│  │           :8080 (REST)                               │   │
-│  └─────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
+```yaml
+Services:
+┌─────────────────────────────────────────────────────────────────┐
+│                   Docker Host                                    │
+│                                                                  │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐            │
+│  │   Kafka     │  │  Zookeeper  │  │SchemaRegistry│            │
+│  │  :19092     │  │  :2181      │  │   :8081     │            │
+│  │  :29092     │  │             │  │             │            │
+│  │  :9999      │  │             │  │             │            │
+│  └─────────────┘  └─────────────┘  └─────────────┘            │
+│                                                                  │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐            │
+│  │  Kafka UI   │  │Kafka Connect│  │  SQL Server │            │
+│  │  :8090      │  │   :8083     │  │   :1433     │            │
+│  └─────────────┘  └─────────────┘  └─────────────┘            │
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │           Spring Boot Application                        │   │
+│  │           Port: 8082                                     │   │
+│  │           REST: http://localhost:8082                    │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### Production Deployment (Kubernetes)
+### Starting Infrastructure
 
+```bash
+# Start all infrastructure services
+docker-compose up -d
+
+# Access Kafka UI
+http://localhost:8090
+
+# Access Schema Registry
+http://localhost:8081
+
+# Run Spring Boot application
+mvn spring-boot:run
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                  Kubernetes Cluster                          │
-│                                                              │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │              Kafka Cluster (3 brokers)                │   │
-│  │              (StatefulSet)                            │   │
-│  └─────────────────────────────────────────────────────┘   │
-│                                                              │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Order     │  │   Payment   │  │  Inventory  │        │
-│  │  Service    │  │   Service   │  │   Service   │        │
-│  │  (Deploy)   │  │  (Deploy)   │  │  (Deploy)   │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-│                                                              │
-│  ┌─────────────┐  ┌─────────────┐                          │
-│  │Notification │  │    API      │                          │
-│  │   Service   │  │   Gateway   │                          │
-│  │  (Deploy)   │  │  (Ingress)  │                          │
-│  └─────────────┘  └─────────────┘                          │
-└─────────────────────────────────────────────────────────────┘
-```
+
+### Network Configuration
+
+| Service | Internal Port | External Port | Purpose |
+|---------|--------------|---------------|---------|
+| Kafka | 29092 | 19092 | Client connections |
+| Zookeeper | 2181 | 2181 | Kafka coordination |
+| Schema Registry | 8081 | 8081 | Schema management |
+| Kafka UI | 8080 | 8090 | Web interface |
+| Kafka Connect | 8083 | 8083 | Connector API |
+| SQL Server | 1433 | 1433 | Database |
 
 ---
 
-## Scaling Considerations
+## Configuration
 
-### Horizontal Scaling
+### Consumer Modes
 
-**Order Service:**
-- Scale based on CPU/Memory
-- Stateless (session in Redis)
-- Multiple instances behind load balancer
+The application supports two consumer modes configurable via `application.yml`:
 
-**Kafka Consumers:**
-- Scale by increasing consumer instances
-- Limited by number of partitions
-- Use consumer groups for parallelism
+#### Mode 1: Standard Consumer Mode (Default)
 
-### Partition Strategy
+Uses independent consumers for each processing stage. Each consumer handles one step and publishes events for the next.
 
+**Active Components:**
+- `OrderConsumer` - Processes orders and initiates payments
+- `PaymentConsumer` - Confirms payments and requests inventory
+- `InventoryConsumer` - Reserves inventory and confirms orders
+- `NotificationConsumer` - Sends notifications
+
+**Flow:** Order → Payment → Inventory → Confirmation → Notification
+
+**Configuration:**
+```yaml
+kafka:
+  consumer:
+    mode: standard  # or omit (default)
 ```
-# Recommended partition count:
-order-created: 6 partitions (scale to 6 consumers)
-payment-processed: 6 partitions
-inventory-reserved: 6 partitions
-notification-email: 3 partitions
+
+#### Mode 2: Saga Orchestrator Mode
+
+Uses a central orchestrator that coordinates the entire transaction with compensation logic.
+
+**Active Components:**
+- `OrderSagaOrchestrator` - Central coordinator for payment and inventory
+- Automatic compensation (rollback) on failures
+- Timeout handling for incomplete transactions (5 minutes)
+
+**Flow:** Order → [Saga: Payment → Inventory] → Confirmation
+
+**Configuration:**
+```yaml
+kafka:
+  consumer:
+    mode: saga
 ```
 
-**Rule of Thumb:**
-- Start with 3-6 partitions
-- Can increase but not decrease
-- Plan for 10x traffic growth
+### Switching Modes
+
+**Via application.yml:**
+```yaml
+kafka:
+  consumer:
+    mode: standard  # Change to 'saga' to use saga orchestrator
+```
+
+**Via command-line:**
+```bash
+# Run with standard consumers
+mvn spring-boot:run -Dspring-boot.run.arguments="--kafka.consumer.mode=standard"
+
+# Run with saga orchestrator
+mvn spring-boot:run -Dspring-boot.run.arguments="--kafka.consumer.mode=saga"
+```
+
+### Kafka Configuration
+
+**Producer Settings:**
+```yaml
+spring:
+  kafka:
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+      properties:
+        linger.ms: 5
+        compression.type: snappy
+        enable.idempotence: true
+```
+
+**Consumer Settings:**
+```yaml
+spring:
+  kafka:
+    consumer:
+      group-id: kafka-mastery-group
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+        isolation.level: read_committed
+```
+
+### Error Handling Configuration
+
+**Retry Configuration:**
+```yaml
+kafka:
+  retry:
+    max-attempts: 3
+    initial-delay-ms: 1000
+    backoff-multiplier: 2
+    max-delay-ms: 10000
+  dlt:
+    enabled: true
+```
+
+**Retry Flow:**
+```
+Message → Retry 0 (1s) → Retry 1 (2s) → Retry 2 (4s) → DLT
+```
+
+### Topic Configuration
+
+All topics are auto-created by Spring Boot with the following defaults:
+
+| Topic | Partitions | Replicas |
+|-------|-----------|----------|
+| All topics | 3 | 1 |
+
+**DLT Topics:**
+- `order-created-dlt`
+- `payment-processed-dlt`
 
 ---
 
 ## Resilience Patterns
 
-### Retry Pattern
+### Idempotency Pattern
 
-```
-Consumer receives message
-    ↓
-Processing fails (temporary error)
-    ↓
-Retry after 1s (Retry Topic 0)
-    ↓
-Still fails
-    ↓
-Retry after 2s (Retry Topic 1)
-    ↓
-Still fails
-    ↓
-Send to Dead Letter Topic
-    ↓
-Alert operations team
-```
-
-### Circuit Breaker (Future Enhancement)
+Each consumer maintains a `ConcurrentHashMap` of processed keys to prevent duplicate processing:
 
 ```java
-// Future: Add Resilience4j circuit breaker
-@CircuitBreaker(name = "paymentService", fallbackMethod = "fallback")
-public Payment processPayment(Order order) {
-    return paymentService.process(order);
+private final Set<String> processedKeys = ConcurrentHashMap.newKeySet();
+
+private boolean isDuplicate(String key) {
+    return processedKeys.contains(key);
 }
 ```
 
-### Bulkhead Pattern
+### Retry with Exponential Backoff
 
-```java
-// Separate thread pools for different operations
-@Bulkhead(name = "kafkaConsumer", type = Bulkhead.Type.THREADPOOL)
-public void consumeMessage(Order order) {
-    // Process message
-}
-```
+Spring Kafka's `DefaultErrorHandler` with `DefaultBackOff`:
+- Initial interval: 1s
+- Multiplier: 2.0
+- Max interval: 10s
+- Max attempts: 3
 
----
+### Dead Letter Topic
 
-## Security Considerations
+Messages that fail after all retries are sent to a DLT topic for manual inspection.
 
-### Kafka Security
+### Saga Timeout Handling
 
-1. **SSL/TLS**: Encrypt data in transit
-2. **SASL**: Authentication (SCRAM-SHA-256)
-3. **ACLs**: Authorization for topics
-4. **Quotas**: Prevent abuse
-
-### Data Security
-
-1. **PII Encryption**: Encrypt customer data
-2. **Tokenization**: Use tokens instead of card numbers
-3. **Audit Logging**: Log all access
-4. **Data Retention**: Configure topic retention
+The saga orchestrator monitors for incomplete transactions:
+- Check interval: 60 seconds
+- Timeout threshold: 5 minutes
+- Automatic compensation on timeout
 
 ---
 
-## Monitoring Strategy
+## Monitoring
 
 ### Key Metrics
 
@@ -477,21 +705,26 @@ public void consumeMessage(Order order) {
 | DLT Message Count | > 0 | Warning |
 | Error Rate | > 1% | Critical |
 
+### Actuator Endpoints
+
+```bash
+# Health check
+http://localhost:8082/actuator/health
+
+# Metrics
+http://localhost:8082/actuator/metrics
+
+# Prometheus metrics
+http://localhost:8082/actuator/prometheus
+```
+
 ### Logging
 
+```yaml
+logging:
+  level:
+    root: INFO
+    com.learning.kafka: DEBUG
+    org.springframework.kafka: DEBUG
+    org.apache.kafka: WARN
 ```
-Format: JSON
-Level: INFO (production), DEBUG (development)
-Aggregation: ELK Stack or Splunk
-```
-
-### Tracing
-
-```
-Correlation ID: Passed through all services
-Tool: Zipkin, Jaeger, or AWS X-Ray
-```
-
----
-
-Happy Building! 🚀
